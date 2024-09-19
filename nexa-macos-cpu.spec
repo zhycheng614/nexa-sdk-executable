@@ -1,6 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
 import sys
-from PyInstaller.utils.hooks import collect_dynamic_libs
 
 if sys.platform.startswith('darwin'):
     lib_extensions = ['.dylib']
@@ -20,10 +19,6 @@ if sys.platform.startswith('darwin'):
                  win_private_assemblies=False,
                  cipher=None,
                  noarchive=False)
-
-    # Collect all dynamic libraries
-    extra_binaries = collect_dynamic_libs('nexa')
-    a.binaries += extra_binaries
 
     pyz = PYZ(a.pure, a.zipped_data,
               cipher=None)
