@@ -20,33 +20,25 @@ if sys.platform.startswith('darwin'):
                  cipher=None,
                  noarchive=False)
 
-    pyz = PYZ(a.pure)
+    pyz = PYZ(a.pure, a.zipped_data,
+              cipher=None)
 
     exe = EXE(pyz,
               a.scripts,
+              a.binaries,
+              a.zipfiles,
+              a.datas,
               [],
-              exclude_binaries=True,
               name='nexa',
               debug=False,
               bootloader_ignore_signals=False,
               strip=False,
               upx=True,
+              upx_exclude=[],
+              runtime_tmpdir=None,
               console=True,
               disable_windowed_traceback=False,
-              argv_emulation=True,
+              argv_emulation=False,
               target_arch=None,
               codesign_identity=None,
               entitlements_file=None)
-
-    app = BUNDLE(exe,
-                 a.binaries,
-                 a.datas,
-                 name='nexa.app',
-                 icon=None,
-                 bundle_identifier='com.nexaai.sdk',
-                 info_plist={
-                     'NSHighResolutionCapable': 'True',
-                     'LSBackgroundOnly': 'False',
-                     'NSRequiresAquaSystemAppearance': 'False',
-                     'CFBundleShortVersionString': '1.0.0',
-                 })

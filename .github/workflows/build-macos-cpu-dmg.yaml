@@ -40,48 +40,6 @@ jobs:
     - name: Build with PyInstaller
       run: pyinstaller nexa-macos-cpu.spec
 
-    # - name: Create launcher script
-    #   run: |
-    #     if [ -d "nexa" ]; then
-    #       SCRIPT_NAME="nexa_launcher"
-    #     else
-    #       SCRIPT_NAME="nexa"
-    #     fi
-
-    #     cat << EOF > "$SCRIPT_NAME"
-    #     #!/bin/bash
-
-    #     NEXA_APP="/Applications/Nexa.app"
-    #     NEXA_EXECUTABLE="\$NEXA_APP/Contents/MacOS/nexa"
-
-    #     if [ "\$1" = "--gui" ]; then
-    #       osascript -e "tell application \"Terminal\" to do script \"\$NEXA_EXECUTABLE\""
-    #     else
-    #       "\$NEXA_EXECUTABLE" "\$@"
-    #     fi
-    #     EOF
-
-    #     chmod +x "$SCRIPT_NAME"
-    #     echo "LAUNCHER_SCRIPT_NAME=$SCRIPT_NAME" >> $GITHUB_ENV
-
-    # - name: Add launcher script to app bundle
-    #   run: |
-    #     mkdir -p "dist/nexa.app/Contents/Resources"
-    #     cp "${{ env.LAUNCHER_SCRIPT_NAME }}" "dist/nexa.app/Contents/Resources/nexa"
-    #     mkdir -p "dist/nexa.app/Contents/Frameworks/nexa"
-    #     cp "${{ env.LAUNCHER_SCRIPT_NAME }}" "dist/nexa.app/Contents/Frameworks/nexa/nexa_launcher"
-    #     chmod +x "dist/nexa.app/Contents/Frameworks/nexa/nexa_launcher"
-
-    - name: Modify Info.plist
-      run: |
-        /usr/libexec/PlistBuddy -c "Set CFBundleExecutable nexa" "dist/nexa.app/Contents/Info.plist"
-        /usr/libexec/PlistBuddy -c "Add LSUIElement string 1" "dist/nexa.app/Contents/Info.plist"
-
-    - name: Set app icon
-      run: |
-        cp nexa-icon.icns dist/nexa.app/Contents/Resources/
-        /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile nexa-icon" dist/nexa.app/Contents/Info.plist
-
     - name: Import Code Signing Certificates
       env:
         APP_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE }}
@@ -98,71 +56,31 @@ jobs:
         security import installer_certificate.p12 -k build.keychain -P $INSTALLER_CERTIFICATE_PASSWORD -T /usr/bin/productsign
         security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain
 
-    - name: Sign the app
+    - name: Sign the executable
       env:
         APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
       run: |
-        # Sign nexa_launcher individually
-        # codesign --force --options runtime --timestamp -s "$APPLE_DEVELOPER_ID" "dist/nexa.app/Contents/Frameworks/nexa/nexa_launcher"
-        
-        # Sign Python binaries
-        codesign --force --options runtime --timestamp -s "$APPLE_DEVELOPER_ID" "dist/nexa.app/Contents/Resources/Python"
-        codesign --force --options runtime --timestamp -s "$APPLE_DEVELOPER_ID" "dist/nexa.app/Contents/Resources/Python.framework/Python"
-        codesign --force --options runtime --timestamp -s "$APPLE_DEVELOPER_ID" "dist/nexa.app/Contents/Frameworks/Python"
-        codesign --force --options runtime --timestamp -s "$APPLE_DEVELOPER_ID" "dist/nexa.app/Contents/Frameworks/Python.framework/Python"
-
-        # Sign all other components
-        find "dist/nexa.app/Contents" -type f \( -name "*.so" -o -name "*.dylib" \) -exec codesign --force --options runtime --timestamp -s "$APPLE_DEVELOPER_ID" {} \;
-        
-        # Sign the main executable
-        codesign --force --options runtime --timestamp -s "$APPLE_DEVELOPER_ID" "dist/nexa.app/Contents/MacOS/nexa"
-        
-        # Sign the entire app bundle with --deep option
-        codesign --force --options runtime --timestamp --deep -s "$APPLE_DEVELOPER_ID" "dist/nexa.app"
-        
-        # Verify the signature
-        codesign -vvv --deep --strict "dist/nexa.app"
-
-    # - name: Create PKG Installer
-    #   run: |
-    #     mkdir -p pkg_root/Applications
-
-    #     cp -R dist/nexa.app pkg_root/Applications/
-
-    #     pkgbuild --root pkg_root \
-    #             --identifier com.nexaai.sdk \
-    #             --version ${{ env.VERSION }} \
-    #             --install-location / \
-    #             "Nexa-${{ env.VERSION }}-unsigned.pkg"
-
-    #     rm -rf pkg_root
+        codesign --force --options runtime --timestamp -s "$APPLE_DEVELOPER_ID" "dist/nexa"
+        codesign -vvv --strict "dist/nexa"
 
     - name: Create PKG Installer
       run: |
-        mkdir -p pkg_root/Applications pkg_scripts
+        mkdir -p pkg_root/usr/local/bin pkg_scripts
 
-        cp -R dist/nexa.app pkg_root/Applications/
+        # Copy the standalone executable
+        cp dist/nexa pkg_root/usr/local/bin/
 
+        # Create preinstall script
         cat << EOF > pkg_scripts/preinstall
         #!/bin/bash
-        # Remove existing symlink if it exists
+        # Remove existing executable if it exists
         rm -f /usr/local/bin/nexa
         exit 0
         EOF
 
+        # Create postinstall script
         cat << EOF > pkg_scripts/postinstall
         #!/bin/bash
-        # Create the symlink
-        ln -sf /Applications/nexa.app/Contents/MacOS/nexa /usr/local/bin/nexa
-
-        # Ensure the symlink is created successfully
-        if [ -L "/usr/local/bin/nexa" ]; then
-          echo "Symlink created successfully"
-        else
-          echo "Failed to create symlink"
-          exit 1
-        fi
-
         # Set correct permissions
         chown root:wheel /usr/local/bin/nexa
         chmod 755 /usr/local/bin/nexa
@@ -174,7 +92,7 @@ jobs:
 
         pkgbuild --root pkg_root \
                 --scripts pkg_scripts \
-                --identifier com.yourcompany.nexa \
+                --identifier com.nexaai.sdk \
                 --version ${{ env.VERSION }} \
                 --install-location / \
                 "Nexa-${{ env.VERSION }}-unsigned.pkg"
@@ -239,8 +157,10 @@ jobs:
           sleep 30
         done
 
-    - name: Upload artifact
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: nexa-${{ env.VERSION }}-cpu-macos-amd64
-        path: Nexa-${{ env.VERSION }}.pkg
+        path: |
+          Nexa-${{ env.VERSION }}.pkg
+          dist/nexa
