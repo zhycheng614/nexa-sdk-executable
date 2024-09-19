@@ -47,7 +47,7 @@ jobs:
     - name: Build with PyInstaller
       run: |
         source venv/bin/activate
-        pyinstaller nexa-macos-cpu-standalone.spec
+        pyinstaller nexa-macos-cpu.spec
 
     - name: Fix executable
       run: |
