@@ -49,14 +49,6 @@ jobs:
         source venv/bin/activate
         pyinstaller nexa-macos-cpu.spec
 
-    - name: Fix executable
-      run: |
-        source venv/bin/activate
-        delocate-listdeps dist/nexa
-        delocate-wheel -w fixed_wheel dist/nexa
-        mv fixed_wheel/nexa dist/nexa
-        otool -L dist/nexa
-
     - name: Import Code Signing Certificates
       env:
         APP_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE }}
