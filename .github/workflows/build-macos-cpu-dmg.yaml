@@ -1,10 +1,10 @@
-name: Build Nexa Executables MacOS CPU Bundle
+name: Build Nexa Executables MacOS CPU Standalone
 
 on:
   push:
-    branches: [ perry/macos-cpu-bundle ]
+    branches: [ perry/macos-cpu-standalone ]
   pull_request:
-    branches: [ perry/macos-cpu-bundle ]
+    branches: [ perry/macos-cpu-standalone ]
   workflow_dispatch:
 
 jobs:
@@ -27,10 +27,17 @@ jobs:
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pyinstaller wheel setuptools scikit-build-core
+        pip install pyinstaller wheel setuptools scikit-build-core macholib delocate
+
+    - name: Create virtual environment
+      run: |
+        python -m venv venv
+        source venv/bin/activate
 
     - name: Install nexaai
-      run: pip install -e . --verbose --prefer-binary --index-url https://nexaai.github.io/nexa-sdk/whl/cpu --extra-index-url https://pypi.org/simple --no-cache-dir
+      run: |
+        source venv/bin/activate
+        pip install -e . --verbose --prefer-binary --index-url https://nexaai.github.io/nexa-sdk/whl/cpu --extra-index-url https://pypi.org/simple --no-cache-dir
 
     - name: Extract version
       run: |
@@ -38,7 +45,17 @@ jobs:
         echo "VERSION=$VERSION" >> $GITHUB_ENV
 
     - name: Build with PyInstaller
-      run: pyinstaller nexa-macos-cpu.spec
+      run: |
+        source venv/bin/activate
+        pyinstaller nexa-macos-cpu-standalone.spec
+
+    - name: Fix executable
+      run: |
+        source venv/bin/activate
+        delocate-listdeps dist/nexa
+        delocate-wheel -w fixed_wheel dist/nexa
+        mv fixed_wheel/nexa dist/nexa
+        otool -L dist/nexa
 
     - name: Import Code Signing Certificates
       env:
@@ -60,8 +77,14 @@ jobs:
       env:
         APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
       run: |
+        # Sign all .dylib files
+        find dist -name "*.dylib" -exec codesign --force --options runtime --timestamp -s "$APPLE_DEVELOPER_ID" {} \;
+
+        # Sign the main executable
         codesign --force --options runtime --timestamp -s "$APPLE_DEVELOPER_ID" "dist/nexa"
-        codesign -vvv --strict "dist/nexa"
+
+        # Verify the signature
+        codesign -vvv --deep --strict "dist/nexa"
 
     - name: Create PKG Installer
       run: |
