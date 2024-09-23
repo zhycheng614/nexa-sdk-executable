@@ -1,0 +1,88 @@
+name: Build Nexa Windows CUDA Executables
+
+on:
+  push:
+    branches: [ perry/windows-installer ]
+  pull_request:
+    branches: [ perry/windows-installer ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest]
+        python-version: [3.11]
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: 'recursive'
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install system dependencies (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        choco install cmake
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller wheel setuptools scikit-build-core
+
+    - name: Install nexaai
+      run: $env:CMAKE_ARGS="-DGGML_CUDA=ON -DSD_CUBLAS=ON"; pip install -e . --prefer-binary --index-url https://nexaai.github.io/nexa-sdk/whl/cu124 --extra-index-url https://pypi.org/simple --no-cache-dir
+
+    - name: Extract version (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        try {
+          $pythonCommand = @"
+        import re
+        import sys
+        try:
+            with open('nexa/__init__.py', 'r') as f:
+                content = f.read()
+            match = re.search(r'__version__\s*=\s*[\'\"](.*?)[\'\"]', content)
+            if match:
+                print(match.group(1))
+            else:
+                print('Version not found', file=sys.stderr)
+                sys.exit(1)
+        except Exception as e:
+            print(f"Error: {str(e)}", file=sys.stderr)
+            sys.exit(1)
+        "@
+          $VERSION = python -c $pythonCommand
+          if ($LASTEXITCODE -eq 0) {
+            echo "VERSION=$VERSION" >> $env:GITHUB_ENV
+            Write-Output "Version extracted: $VERSION"
+          } else {
+            Write-Error "Failed to extract version"
+          }
+        } catch {
+          Write-Error "An error occurred: $_"
+        }
+      continue-on-error: true
+
+    - name: Build with PyInstaller
+      run: pyinstaller nexa-windows-cuda.spec
+
+    - name: Package (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        cd dist
+        7z a -tzip nexa-${{ env.VERSION }}-windows-cuda.zip nexa-windows-cuda
+        cd ..
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: nexa-${{ env.VERSION }}-cuda-${{ runner.os }}
+        path: dist/nexa-${{ env.VERSION }}-cuda-*.*
