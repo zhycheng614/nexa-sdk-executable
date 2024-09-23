@@ -1,0 +1,39 @@
+# Build tools
+build
+wheel
+twine
+cmake # For building C++ extensions
+
+# Faster Whisper
+faster_whisper
+
+# For ggml
+typing-extensions>=4.5.0
+numpy>=1.20.0
+diskcache>=5.6.1
+jinja2>=2.11.3
+librosa>=0.8.0
+fastapi
+uvicorn
+pydantic
+pillow
+python-multipart
+huggingface_hub
+
+# For onnx
+optimum[onnxruntime]  # for CPU version
+diffusers  # required for image generation
+optuna
+PyYAML
+requests
+setuptools
+soundfile
+streamlit-audiorec
+transformers
+ttstokenizer
+
+# Shared dependencies
+prompt_toolkit
+tqdm
+tabulate
+streamlit
