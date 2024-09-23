@@ -17,7 +17,6 @@ from nexa.constants import (
 from nexa.utils import SpinningCursorAnimation, nexa_prompt
 from nexa.gguf.llama._utils_transformers import suppress_stdout_stderr
 
-from streamlit.web import cli as stcli
 from nexa.general import pull_model
 
 logging.basicConfig(
@@ -33,6 +32,7 @@ RETRY_ATTEMPTS = (
 FLUX_VAE_PATH = "FLUX.1-schnell:ae-fp16"
 FLUX_CLIP_L_PATH = "FLUX.1-schnell:clip_l-fp16"
 
+
 class NexaImageInference:
     """
     A class used for loading image models and running image generation.
@@ -42,7 +42,6 @@ class NexaImageInference:
         img2img(image_path, prompt): Generate images from an image.
         run_txt2img: Run the text-to-image generation loop.
         run_img2img: Run the image-to-image generation loop.
-        run_streamlit: Run the Streamlit UI.
 
     Args:
     model_path (str): Path or identifier for the model in Nexa Model Hub.
@@ -53,8 +52,6 @@ class NexaImageInference:
     guidance_scale (float): Guidance scale for diffusion.
     output_path (str): Output path for the generated image.
     random_seed (int): Random seed for image generation.
-    streamlit (bool): Run the inference in Streamlit UI.
-
     """
 
     def __init__(self, model_path, local_path=None, **kwargs):
@@ -84,7 +81,7 @@ class NexaImageInference:
             self.t5xxl_path = NEXA_RUN_T5XXL_MAP.get(model_path)
             self.ae_path = FLUX_VAE_PATH
             self.clip_l_path = FLUX_CLIP_L_PATH
-            
+
             if self.t5xxl_path:
                 self.t5xxl_downloaded_path, _ = pull_model(self.t5xxl_path)
             if self.ae_path:
@@ -92,24 +89,30 @@ class NexaImageInference:
             if self.clip_l_path:
                 self.clip_l_downloaded_path, _ = pull_model(self.clip_l_path)
         if "lcm-dreamshaper" in self.model_path or "flux" in self.model_path:
-            self.params = DEFAULT_IMG_GEN_PARAMS_LCM.copy() # both lcm-dreamshaper and flux use the same params
+            self.params = (
+                DEFAULT_IMG_GEN_PARAMS_LCM.copy()
+            )  # both lcm-dreamshaper and flux use the same params
         elif "sdxl-turbo" in self.model_path:
             self.params = DEFAULT_IMG_GEN_PARAMS_TURBO.copy()
         else:
             self.params = DEFAULT_IMG_GEN_PARAMS.copy()
 
         self.params.update({k: v for k, v in kwargs.items() if v is not None})
-        if not kwargs.get("streamlit", False):
-            self._load_model(model_path)
-            if self.model is None:
-                logging.error("Failed to load the model or pipeline.")
-                exit(1)
+        self._load_model(model_path)
+        if self.model is None:
+            logging.error("Failed to load the model or pipeline.")
+            exit(1)
 
     @SpinningCursorAnimation()
     def _load_model(self, model_path: str):
         with suppress_stdout_stderr():
             from nexa.gguf.sd.stable_diffusion import StableDiffusion
-            if self.t5xxl_downloaded_path and self.ae_downloaded_path and self.clip_l_downloaded_path:
+
+            if (
+                self.t5xxl_downloaded_path
+                and self.ae_downloaded_path
+                and self.clip_l_downloaded_path
+            ):
                 self.model = StableDiffusion(
                     diffusion_model_path=self.downloaded_path,
                     clip_l_path=self.clip_l_downloaded_path,
@@ -153,7 +156,9 @@ class NexaImageInference:
             except Exception as e:
                 logging.error(f"Attempt {attempt + 1} failed with error: {e}")
                 time.sleep(1)
-        print("All retry attempts failed becase of Out of Memory error, Try to use smaller models...")
+        print(
+            "All retry attempts failed becase of Out of Memory error, Try to use smaller models..."
+        )
         return None
 
     def txt2img(
@@ -287,21 +292,6 @@ class NexaImageInference:
             except Exception as e:
                 logging.error(f"Error during generation: {e}", exc_info=True)
 
-    def run_streamlit(self, model_path: str):
-        """
-        Run the Streamlit UI.
-        """
-        logging.info("Running Streamlit UI...")
-
-        streamlit_script_path = (
-            Path(os.path.abspath(__file__)).parent
-            / "streamlit"
-            / "streamlit_image_chat.py"
-        )
-
-        sys.argv = ["streamlit", "run", str(streamlit_script_path), model_path]
-        sys.exit(stcli.main())
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -352,21 +342,11 @@ if __name__ == "__main__":
         default=0,
         help="Random seed for image generation",
     )
-    # parser.add_argument("--device", type=str, default='cuda' if torch.cuda.is_available() else 'cpu', help="Device to run the model on (default: cuda if available, else cpu)")
-    parser.add_argument(
-        "-st",
-        "--streamlit",
-        action="store_true",
-        help="Run the inference in Streamlit UI",
-    )
     args = parser.parse_args()
     kwargs = {k: v for k, v in vars(args).items() if v is not None}
     model_path = kwargs.pop("model_path")
     inference = NexaImageInference(model_path, **kwargs)
-    if args.streamlit:
-        inference.run_streamlit(model_path)
+    if args.img2img:
+        inference.run_img2img()
     else:
-        if args.img2img:
-            inference.run_img2img()
-        else:
-            inference.run_txt2img()
+        inference.run_txt2img()
